@@ -3,8 +3,7 @@ const {
   GatewayIntentBits,
   REST,
   Routes,
-  SlashCommandBuilder,
-  PermissionFlagsBits
+  SlashCommandBuilder
 } = require('discord.js');
 
 const {
@@ -41,17 +40,29 @@ client.once('ready', async () => {
   const commands = [
     new SlashCommandBuilder()
       .setName('add')
-      .setDescription('Add sound')
-      .addStringOption(o =>
-        o.setName('name').setRequired(true))
-      .addAttachmentOption(o =>
-        o.setName('sound').setRequired(true)),
+      .setDescription('Fuegt einen neuen Sound hinzu')
+      .addStringOption(option =>
+        option
+          .setName('name')
+          .setDescription('Das Wort fuer den Sound')
+          .setRequired(true)
+      )
+      .addAttachmentOption(option =>
+        option
+          .setName('sound')
+          .setDescription('Die MP3 Datei')
+          .setRequired(true)
+      ),
 
     new SlashCommandBuilder()
       .setName('delete')
-      .setDescription('Delete sound')
-      .addStringOption(o =>
-        o.setName('name').setRequired(true))
+      .setDescription('Loescht einen Sound')
+      .addStringOption(option =>
+        option
+          .setName('name')
+          .setDescription('Das Wort das geloescht werden soll')
+          .setRequired(true)
+      )
   ].map(c => c.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -64,11 +75,13 @@ client.once('ready', async () => {
     { body: commands }
   );
 
-  console.log("Slash Commands geladen");
+  console.log('Slash Commands geladen');
 });
 
 async function playSound(channel, url) {
   const res = await fetch(url);
+  if (!res.ok || !res.body) return;
+
   const stream = Readable.fromWeb(res.body);
 
   const connection = joinVoiceChannel({
@@ -89,13 +102,18 @@ async function playSound(channel, url) {
   player.on(AudioPlayerStatus.Idle, () => {
     try { connection.destroy(); } catch {}
   });
+
+  player.on('error', () => {
+    try { connection.destroy(); } catch {}
+  });
 }
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
+  if (!message.guild) return;
   if (message.channel.name !== SOUND_CHANNEL) return;
 
-  const text = message.content.toLowerCase();
+  const text = message.content.toLowerCase().trim();
   const vc = message.member?.voice?.channel;
   if (!vc) return;
 
@@ -108,32 +126,38 @@ client.on('messageCreate', async (message) => {
   if (!data) return;
 
   await message.delete().catch(() => {});
-  playSound(vc, data.url);
+  await playSound(vc, data.url);
 });
 
 client.on('interactionCreate', async (i) => {
   if (!i.isChatInputCommand()) return;
 
   if (i.commandName === 'add') {
-    const name = i.options.getString('name');
+    const name = i.options.getString('name').toLowerCase().trim();
     const file = i.options.getAttachment('sound');
+
+    if (!file) {
+      await i.reply({ content: 'Keine Datei gefunden.', ephemeral: true });
+      return;
+    }
 
     await supabase.from('sounds').upsert({
       trigger: name,
       url: file.url
     });
 
-    i.reply({ content: "gespeichert", ephemeral: true });
+    await i.reply({ content: 'gespeichert', ephemeral: true });
   }
 
   if (i.commandName === 'delete') {
-    const name = i.options.getString('name');
+    const name = i.options.getString('name').toLowerCase().trim();
 
-    await supabase.from('sounds')
+    await supabase
+      .from('sounds')
       .delete()
       .eq('trigger', name);
 
-    i.reply({ content: "gelöscht", ephemeral: true });
+    await i.reply({ content: 'geloescht', ephemeral: true });
   }
 });
 
