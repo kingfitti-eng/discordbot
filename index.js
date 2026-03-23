@@ -71,29 +71,34 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 });
 
 // Soundboard im Textchannel
-client.on('messageCreate', (message) => {
-  if (message.author.bot) return;
-  if (!message.guild) return;
-  if (message.channel.name !== SOUND_CHANNEL) return;
+client.on('messageCreate', async (message) => {
+  try {
+    if (message.author.bot) return;
+    if (!message.guild) return;
+    if (message.channel.name !== SOUND_CHANNEL) return;
 
-  const text = message.content.toLowerCase().trim();
-  const voiceChannel = message.member?.voice?.channel;
-  if (!voiceChannel) return;
+    const text = message.content.toLowerCase().trim();
+    const voiceChannel = message.member?.voice?.channel;
+    if (!voiceChannel) return;
 
-  let soundFile = null;
+    let soundFile = null;
 
-  if (text === "bombo") soundFile = './sound4.mp3';
-  else if (text === "fah") soundFile = './sound5.mp3';
-  else if (text === "max") soundFile = './sound6.mp3';
-  else if (text === "steve") soundFile = './sound7.mp3';
-  else if (text === "tafreed") soundFile = './sound8.mp3';
-  else if (text === "niga") soundFile = './sound9.mp3';
-  else if (text === "geil") soundFile = './sound10.mp3';
-  else if (text === "bullets") soundFile = './sound11.mp3';
+    if (text === "bombo") soundFile = './sound4.mp3';
+    else if (text === "fah") soundFile = './sound5.mp3';
+    else if (text === "max") soundFile = './sound6.mp3';
+    else if (text === "steve") soundFile = './sound7.mp3';
+    else if (text === "tafreed") soundFile = './sound8.mp3';
+    else if (text === "niga") soundFile = './sound9.mp3';
+    else if (text === "geil") soundFile = './sound10.mp3';
+    else if (text === "bullets") soundFile = './sound11.mp3';
 
-  if (!soundFile) return;
+    if (!soundFile) return;
 
-  playSound(voiceChannel, soundFile);
+    await message.delete().catch(() => {});
+    playSound(voiceChannel, soundFile);
+  } catch (error) {
+    console.error('Message Fehler:', error);
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
