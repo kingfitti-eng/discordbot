@@ -87,6 +87,9 @@ client.on('messageCreate', (message) => {
   else if (text === "max") soundFile = './sound6.mp3';
   else if (text === "steve") soundFile = './sound7.mp3';
   else if (text === "tafreed") soundFile = './sound8.mp3';
+  else if (text === "niga") soundFile = './sound9.mp3';
+  else if (text === "geil") soundFile = './sound10.mp3';
+  else if (text === "bullets") soundFile = './sound11.mp3';
 
   if (!soundFile) return;
 
