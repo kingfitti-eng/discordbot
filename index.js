@@ -1,4 +1,12 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const {
+  Client,
+  GatewayIntentBits,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  PermissionFlagsBits
+} = require('discord.js');
+
 const {
   joinVoiceChannel,
   createAudioPlayer,
@@ -7,114 +15,125 @@ const {
   VoiceConnectionStatus,
   entersState
 } = require('@discordjs/voice');
-const fs = require('fs');
-const path = require('path');
 
-const SOUND_CHANNEL = "soundboard";
+const { createClient } = require('@supabase/supabase-js');
+const { Readable } = require('stream');
+
+const SOUND_CHANNEL = 'soundboard';
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
   ]
 });
 
-client.once('ready', () => {
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
+client.once('ready', async () => {
   console.log(`Bot online als ${client.user.tag}`);
+
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('add')
+      .setDescription('Add sound')
+      .addStringOption(o =>
+        o.setName('name').setRequired(true))
+      .addAttachmentOption(o =>
+        o.setName('sound').setRequired(true)),
+
+    new SlashCommandBuilder()
+      .setName('delete')
+      .setDescription('Delete sound')
+      .addStringOption(o =>
+        o.setName('name').setRequired(true))
+  ].map(c => c.toJSON());
+
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+  await rest.put(
+    Routes.applicationGuildCommands(
+      process.env.APPLICATION_ID,
+      process.env.GUILD_ID
+    ),
+    { body: commands }
+  );
+
+  console.log("Slash Commands geladen");
 });
 
-async function playSound(channel, soundFile) {
-  try {
-    const fullPath = path.join(__dirname, soundFile.replace('./', ''));
+async function playSound(channel, url) {
+  const res = await fetch(url);
+  const stream = Readable.fromWeb(res.body);
 
-    if (!fs.existsSync(fullPath)) {
-      console.error(`Datei fehlt: ${fullPath}`);
-      return;
-    }
+  const connection = joinVoiceChannel({
+    channelId: channel.id,
+    guildId: channel.guild.id,
+    adapterCreator: channel.guild.voiceAdapterCreator,
+    selfDeaf: false
+  });
 
-    console.log(`Spiele ab: ${fullPath}`);
+  await entersState(connection, VoiceConnectionStatus.Ready, 15000);
 
-    const connection = joinVoiceChannel({
-      channelId: channel.id,
-      guildId: channel.guild.id,
-      adapterCreator: channel.guild.voiceAdapterCreator,
-      selfDeaf: false
-    });
+  const player = createAudioPlayer();
+  const resource = createAudioResource(stream);
 
-    await entersState(connection, VoiceConnectionStatus.Ready, 15000);
+  connection.subscribe(player);
+  player.play(resource);
 
-    const player = createAudioPlayer();
-    const resource = createAudioResource(fullPath);
-
-    connection.subscribe(player);
-    player.play(resource);
-
-    player.on(AudioPlayerStatus.Idle, () => {
-      try { connection.destroy(); } catch {}
-    });
-
-    player.on('error', (error) => {
-      console.error('Player Fehler:', error);
-      try { connection.destroy(); } catch {}
-    });
-
-    setTimeout(() => {
-      try { connection.destroy(); } catch {}
-    }, 15000);
-  } catch (error) {
-    console.error('playSound Fehler:', error);
-  }
+  player.on(AudioPlayerStatus.Idle, () => {
+    try { connection.destroy(); } catch {}
+  });
 }
 
-client.on('voiceStateUpdate', (oldState, newState) => {
-  const joined = !oldState.channelId && newState.channelId;
-  if (!joined) return;
-  if (newState.member.user.bot) return;
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+  if (message.channel.name !== SOUND_CHANNEL) return;
 
-  const roles = newState.member.roles.cache;
-  let soundFile = './sound.mp3';
+  const text = message.content.toLowerCase();
+  const vc = message.member?.voice?.channel;
+  if (!vc) return;
 
-  if (roles.some(r => r.name === "Ghoul Main")) {
-    soundFile = './sound1.mp3';
-  } else if (roles.some(r => r.name === "Profi college gay sex spieler")) {
-    soundFile = './sound2.mp3';
-  } else if (roles.some(r => r.name === "Schönster Mann")) {
-    soundFile = './sound3.mp3';
-  }
+  const { data } = await supabase
+    .from('sounds')
+    .select('url')
+    .eq('trigger', text)
+    .maybeSingle();
 
-  playSound(newState.channel, soundFile);
+  if (!data) return;
+
+  await message.delete().catch(() => {});
+  playSound(vc, data.url);
 });
 
-client.on('messageCreate', async (message) => {
-  try {
-    if (message.author.bot) return;
-    if (!message.guild) return;
-    if (message.channel.name !== SOUND_CHANNEL) return;
+client.on('interactionCreate', async (i) => {
+  if (!i.isChatInputCommand()) return;
 
-    const text = message.content.toLowerCase().trim();
-    const voiceChannel = message.member?.voice?.channel;
-    if (!voiceChannel) return;
+  if (i.commandName === 'add') {
+    const name = i.options.getString('name');
+    const file = i.options.getAttachment('sound');
 
-    let soundFile = null;
+    await supabase.from('sounds').upsert({
+      trigger: name,
+      url: file.url
+    });
 
-    if (text === "bombo") soundFile = './sound4.mp3';
-    else if (text === "fah") soundFile = './sound5.mp3';
-    else if (text === "max") soundFile = './sound6.mp3';
-    else if (text === "steve") soundFile = './sound7.mp3';
-    else if (text === "tafreed") soundFile = './sound8.mp3';
-    else if (text === "niga") soundFile = './sound9.mp3';
-    else if (text === "geil") soundFile = './sound10.mp3';
-    else if (text === "bullets") soundFile = './sound11.mp3';
+    i.reply({ content: "gespeichert", ephemeral: true });
+  }
 
-    if (!soundFile) return;
+  if (i.commandName === 'delete') {
+    const name = i.options.getString('name');
 
-    await message.delete().catch(() => {});
-    await playSound(voiceChannel, soundFile);
-  } catch (error) {
-    console.error('Message Fehler:', error);
+    await supabase.from('sounds')
+      .delete()
+      .eq('trigger', name);
+
+    i.reply({ content: "gelöscht", ephemeral: true });
   }
 });
 
