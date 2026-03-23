@@ -6,11 +6,15 @@ const {
   AudioPlayerStatus
 } = require('@discordjs/voice');
 
+const SOUND_CHANNEL = "soundboard";
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -18,30 +22,7 @@ client.once('ready', () => {
   console.log(`Bot online als ${client.user.tag}`);
 });
 
-client.on('voiceStateUpdate', (oldState, newState) => {
-  const joined = !oldState.channelId && newState.channelId;
-
-  if (!joined) return;
-  if (newState.member.user.bot) return;
-
-  const member = newState.member;
-  const roles = member.roles.cache;
-
-  let soundFile = './sound.mp3'; // default
-
-  // 👉 HIER deine Rollen + Sounds
-  if (roles.some(r => r.name === "Ghoul Main")) {
-    soundFile = './sound1.mp3';
-  }
-  else if (roles.some(r => r.name === "Profi college gay sex spieler")) {
-    soundFile = './sound2.mp3';
-  }
-  else if (roles.some(r => r.name === "Schönster Mann")) {
-    soundFile = './sound3.mp3';
-  }
-
-  const channel = newState.channel;
-
+function playSound(channel, soundFile) {
   const connection = joinVoiceChannel({
     channelId: channel.id,
     guildId: channel.guild.id,
@@ -56,12 +37,60 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   player.play(resource);
 
   player.on(AudioPlayerStatus.Idle, () => {
-    connection.destroy();
+    try { connection.destroy(); } catch {}
+  });
+
+  player.on('error', (error) => {
+    console.error('Player Fehler:', error);
+    try { connection.destroy(); } catch {}
   });
 
   setTimeout(() => {
     try { connection.destroy(); } catch {}
   }, 10000);
+}
+
+// Join Sound nach Rolle
+client.on('voiceStateUpdate', (oldState, newState) => {
+  const joined = !oldState.channelId && newState.channelId;
+  if (!joined) return;
+  if (newState.member.user.bot) return;
+
+  const roles = newState.member.roles.cache;
+  let soundFile = './sound.mp3';
+
+  if (roles.some(r => r.name === "Ghoul Main")) {
+    soundFile = './sound1.mp3';
+  } else if (roles.some(r => r.name === "Profi college gay sex spieler")) {
+    soundFile = './sound2.mp3';
+  } else if (roles.some(r => r.name === "Schönster Mann")) {
+    soundFile = './sound3.mp3';
+  }
+
+  playSound(newState.channel, soundFile);
+});
+
+// Soundboard im Textchannel
+client.on('messageCreate', (message) => {
+  if (message.author.bot) return;
+  if (!message.guild) return;
+  if (message.channel.name !== SOUND_CHANNEL) return;
+
+  const text = message.content.toLowerCase().trim();
+  const voiceChannel = message.member?.voice?.channel;
+  if (!voiceChannel) return;
+
+  let soundFile = null;
+
+  if (text === "bombo") soundFile = './sound4.mp3';
+  else if (text === "fah") soundFile = './sound5.mp3';
+  else if (text === "max") soundFile = './sound6.mp3';
+  else if (text === "steve") soundFile = './sound7.mp3';
+  else if (text === "tafreed") soundFile = './sound8.mp3';
+
+  if (!soundFile) return;
+
+  playSound(voiceChannel, soundFile);
 });
 
 client.login(process.env.DISCORD_TOKEN);
