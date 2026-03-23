@@ -3,8 +3,12 @@ const {
   joinVoiceChannel,
   createAudioPlayer,
   createAudioResource,
-  AudioPlayerStatus
+  AudioPlayerStatus,
+  VoiceConnectionStatus,
+  entersState
 } = require('@discordjs/voice');
+const fs = require('fs');
+const path = require('path');
 
 const SOUND_CHANNEL = "soundboard";
 
@@ -22,35 +26,49 @@ client.once('ready', () => {
   console.log(`Bot online als ${client.user.tag}`);
 });
 
-function playSound(channel, soundFile) {
-  const connection = joinVoiceChannel({
-    channelId: channel.id,
-    guildId: channel.guild.id,
-    adapterCreator: channel.guild.voiceAdapterCreator,
-    selfDeaf: false
-  });
+async function playSound(channel, soundFile) {
+  try {
+    const fullPath = path.join(__dirname, soundFile.replace('./', ''));
 
-  const player = createAudioPlayer();
-  const resource = createAudioResource(soundFile);
+    if (!fs.existsSync(fullPath)) {
+      console.error(`Datei fehlt: ${fullPath}`);
+      return;
+    }
 
-  connection.subscribe(player);
-  player.play(resource);
+    console.log(`Spiele ab: ${fullPath}`);
 
-  player.on(AudioPlayerStatus.Idle, () => {
-    try { connection.destroy(); } catch {}
-  });
+    const connection = joinVoiceChannel({
+      channelId: channel.id,
+      guildId: channel.guild.id,
+      adapterCreator: channel.guild.voiceAdapterCreator,
+      selfDeaf: false
+    });
 
-  player.on('error', (error) => {
-    console.error('Player Fehler:', error);
-    try { connection.destroy(); } catch {}
-  });
+    await entersState(connection, VoiceConnectionStatus.Ready, 15000);
 
-  setTimeout(() => {
-    try { connection.destroy(); } catch {}
-  }, 10000);
+    const player = createAudioPlayer();
+    const resource = createAudioResource(fullPath);
+
+    connection.subscribe(player);
+    player.play(resource);
+
+    player.on(AudioPlayerStatus.Idle, () => {
+      try { connection.destroy(); } catch {}
+    });
+
+    player.on('error', (error) => {
+      console.error('Player Fehler:', error);
+      try { connection.destroy(); } catch {}
+    });
+
+    setTimeout(() => {
+      try { connection.destroy(); } catch {}
+    }, 15000);
+  } catch (error) {
+    console.error('playSound Fehler:', error);
+  }
 }
 
-// Join Sound nach Rolle
 client.on('voiceStateUpdate', (oldState, newState) => {
   const joined = !oldState.channelId && newState.channelId;
   if (!joined) return;
@@ -70,7 +88,6 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   playSound(newState.channel, soundFile);
 });
 
-// Soundboard im Textchannel
 client.on('messageCreate', async (message) => {
   try {
     if (message.author.bot) return;
@@ -95,7 +112,7 @@ client.on('messageCreate', async (message) => {
     if (!soundFile) return;
 
     await message.delete().catch(() => {});
-    playSound(voiceChannel, soundFile);
+    await playSound(voiceChannel, soundFile);
   } catch (error) {
     console.error('Message Fehler:', error);
   }
