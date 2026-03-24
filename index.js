@@ -237,7 +237,7 @@ async function playRemoteSound(channel, url) {
   setTimeout(() => {
     try { connection.destroy(); } catch {}
     isPlaying = false;
-  }, 30000);
+  }, 60000);
 }
 
 async function playAnySound(channel, url) {
